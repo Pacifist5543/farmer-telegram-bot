@@ -10,16 +10,19 @@ class CallbackHandler:
         Args:
             bot (TeleBot): объект бота
         """
-        self.bot = TeleBot
+        self.bot = bot
 
-        self.bot.register_callback_query_handler(
-            self.handle_invite_code, func=lambda call: call.data == kb.INVITE_CODE
+        self.bot.register_callback_query_handler( 
+            self.handle_invite_code, # запускаем эту функцию
+            func=lambda call: call.data == kb.INVITE_CODE # если получили вот такой сигнал
         )
+        self.bot.register_callback_query_handler( 
+            self.handle_cancel, # запускаем эту функцию
+            func=lambda call: call.data == kb.CANCLE_INPUT_INVITE_CODE # если получили вот такой сигнал
+        )
+        
 
-        self.bot.register_callback_query_handler(
-            self.handle_cancel,
-            func=lambda call: call.data == kb.CANCLE_INPU_INVITE_CODE,
-        )
+
 
     def handle_invite_code(self, call: types.CallbackQuery):
         """Обработчик нажатия на кнопку "Указать код"."""
@@ -27,15 +30,16 @@ class CallbackHandler:
         self.bot.delete_message(call.message.chat.id, call.message.id)
         self.bot.answer_callback_query(call.id)
 
-        self.bot.set_message(
+        self.bot.send_message(
             call.message.chat.id,
             (
                 "Отправьте код пригласившего вас друга"
                 ", чтобы получить стартовый бонус!\n"
                 "Пример кода: 123456789"
             ),
-        ),
-        reply_markub = kb.cancle_input_invite_code(
+            reply_markup=kb.cancle_input_invite_code
+        )
+        self.bot.register_next_step_handler(
             call.message, self.handle_invite_code_input
         )
 
@@ -45,7 +49,7 @@ class CallbackHandler:
         self.bot.delete_message(call.message.chat.id, call.message.id)
         self.bot.answer_callback_query(call.id)
 
-        self.clear_step_handle_by_chat_id(call.message.chat.id)
+        self.bot.clear_step_handler_by_chat_id(call.message.chat.id)
 
         self.bot.send_message(
             call.message.chat.id,
@@ -56,10 +60,35 @@ class CallbackHandler:
                 " чтобы увеличить свой доход!\n\n"
                 "(Укажие код приглсившего тебя друга и получи стартовый бонус!)"
             ),
-            reply_markup=kb.start_kb,
+            reply_markup=kb.start_kb
         )
 
     def handle_invite_code_input(self, message: types.Message):
         """Обработка ввода пригласительного кода от пользователя."""
 
-        # TODO: описать функцию
+        invite_code = message.text.strip()
+
+        try:
+            invite_code = int(invite_code)
+        except ValueError:
+            self.bot.send_message(
+                message.chat.id,
+                "Код должен состоять только из цифр, попробуйте еще раз!"
+            )
+            self.bot.register_next_step_handler(message, self.handle_invite_code_input)
+            return
+
+        error = GameService().give_startpack(message.from_user, invite_code)
+        if error:
+            self.bot.send_message(
+                message.chat.id,
+                error
+            )
+            self.bot.register_next_step_handler(message, self.handle_invite_code_input)
+            return
+
+        self.bot.send_message(
+                message.chat.id,
+                "Код успешно обработан! Ты получаешь стартовый бонус в размере 100 коинов!",
+                reply_markup=kb.start_game_kb
+            )
